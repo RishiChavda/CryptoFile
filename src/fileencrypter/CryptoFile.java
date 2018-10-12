@@ -1,23 +1,25 @@
 package fileencrypter;
 
-import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
-import javax.crypto.CipherOutputStream;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.util.encoders.Base64;
 
 import javafx.application.Application;
 import javafx.event.ActionEvent;
@@ -40,32 +42,71 @@ public class CryptoFile extends Application {
     	launch(args);
 	}
     
-    public void cryptofile(File plainFile, String key, String method, String direction)
+    public void encryptFile(File inputFile, String key, String method)
     		throws IncorrectCryptoException, 
     			NoSuchPaddingException,
     			NoSuchAlgorithmException, 
     			InvalidKeyException, 
-    			IOException{
+    			IOException, 
+    			InvalidAlgorithmParameterException{
     	
-        Cipher cipher = Cipher.getInstance(method+"/CTR/PKCS7Padding", new BouncyCastleProvider());
-		cipher.init((direction.equals("Encrypt") ? Cipher.ENCRYPT_MODE : Cipher.DECRYPT_MODE), 
-				new SecretKeySpec(key.getBytes("UTF-8"), method));
+    	// check method is correct
+    	System.out.println(plainFile.getName() + " ENCRYPT with '" + key + "' " + method);
+		String newFileName = plainFile.getAbsolutePath() + ".encrypted";
 		
-		FileInputStream fileInput= new FileInputStream(plainFile);
-		FileOutputStream fileOutput = new FileOutputStream((direction.equals("Encrypt")?"CIPHER":"PLAIN")
-				+ plainFile.getName());
-		CipherInputStream cis = new CipherInputStream(fileInput, cipher);
-		CipherOutputStream cos = new CipherOutputStream(fileOutput, cipher);
+    	byte[] iv = new byte[16];
+        Cipher fCipher = Cipher.getInstance(method+"/CTR/NoPadding", new BouncyCastleProvider());
+		fCipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key.getBytes("UTF-8"), method), 
+				new IvParameterSpec(iv));
 		
-		System.out.println(plainFile.getName() + " encrypt with " + key + " " + method + " " + direction);
+		// change below depending on ENCRYPT_MODE/DECRYPT_MODE
+		FileInputStream fis = new FileInputStream(inputFile);
+		CipherInputStream cis = new CipherInputStream(fis, fCipher);
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
 		
-		InputStreamReader isr = new InputStreamReader(fileInput);
-		BufferedReader reader = new BufferedReader(isr);
-		String line;
-		while((line=reader.readLine()) != null) {
-			cos.write(line.getBytes("UTF-8"));
+		byte[] b = new byte[1024];
+		int bytesRead = 0;
+		while((bytesRead = cis.read(b)) >= 0) {
+			baos.write(b, 0, bytesRead);
 		}
+		FileOutputStream fos = new FileOutputStream(new File(newFileName));
+		fos.write(baos.toByteArray());
+		fos.close();
 	}
+    
+    public void decryptFile(File inputFile, String key, String method)
+    		throws IncorrectCryptoException, 
+    			NoSuchPaddingException,
+    			NoSuchAlgorithmException, 
+    			InvalidKeyException, 
+    			IOException, 
+    			InvalidAlgorithmParameterException{
+    	
+    	// check method is correct
+    	System.out.println(plainFile.getName() + " DECRYPT with '" + key + "' " + method);
+		String newFileName = plainFile.getAbsolutePath() + ".decrypted";
+		
+    	byte[] iv = new byte[16];
+        Cipher fCipher = Cipher.getInstance(method+"/CTR/NoPadding", new BouncyCastleProvider());
+		fCipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key.getBytes("UTF-8"), method), 
+				new IvParameterSpec(iv));
+		
+		// change below depending on ENCRYPT_MODE/DECRYPT_MODE
+		FileInputStream fis = new FileInputStream(inputFile);
+		CipherInputStream cis = new CipherInputStream(fis, fCipher);
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		
+		byte[] b = new byte[1024];
+		int bytesRead = 0;
+		while((bytesRead = cis.read(b)) >= 0) {
+			baos.write(b, 0, bytesRead);
+		}
+		FileOutputStream fos = new FileOutputStream(new File(newFileName));
+		fos.write(baos.toByteArray());
+		fos.close();
+	}
+
+
 
 	@Override
 	public void start(Stage window) throws Exception {
@@ -85,11 +126,11 @@ public class CryptoFile extends Application {
 			window.setTitle("CryptoFile");
 			pane.add(windowTitle, 3, 0);
 			
-			Label chooseFileLbl = new Label("Choose a file: ");
-			chooseFileLbl.setFont(formFont);
-			pane.add(chooseFileLbl, 2, 3);
+			Label chooseInputFileLbl = new Label("Choose a file: ");
+			chooseInputFileLbl.setFont(formFont);
+			pane.add(chooseInputFileLbl, 2, 3);
 			
-			Button chooseFileBtn = new Button("Select file...");
+			Button chooseFileBtn = new Button("Select input file...");
 			chooseFileBtn.setOnAction(new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent event) {
@@ -98,6 +139,8 @@ public class CryptoFile extends Application {
 			});
 			chooseFileBtn.setFont(formFont);
 			pane.add(chooseFileBtn, 3, 3);
+			
+			Label chooseOutputFileLbl = new Label("Select output file...");
 			
 			Label keyInputLbl = new Label("Enter key: ");
 			keyInputLbl.setFont(formFont);
@@ -132,15 +175,23 @@ public class CryptoFile extends Application {
 				@Override
 				public void handle(ActionEvent event) {
 					try {
-						cryptofile(
-							plainFile,
-							keyInputTxt.getText(),
-							methodInputCB.getValue(),
-							directionInputCB.getValue()
-						);
+						if(directionInputCB.getValue().equals("Encrypt")) {
+							encryptFile(
+								plainFile,
+								keyInputTxt.getText(),
+								methodInputCB.getValue()
+								);
+						}
+						else if(directionInputCB.getValue().equals("Decrypt")) {
+							decryptFile(
+								plainFile,
+								keyInputTxt.getText(),
+								methodInputCB.getValue()
+							);
+						}
 					}
 					catch(IncorrectCryptoException | InvalidKeyException | NoSuchPaddingException | 
-							NoSuchAlgorithmException | IOException ice) {
+							NoSuchAlgorithmException | IOException | InvalidAlgorithmParameterException ice) {
 						ice.printStackTrace();
 					}
 				}

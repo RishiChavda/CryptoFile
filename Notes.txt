@@ -1,3 +1,2 @@
 FileEncrypter
-- Create GUI using JavaFX
-
+- Fix streams, encrypt method and decrypt method
